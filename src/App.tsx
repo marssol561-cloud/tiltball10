@@ -2,11 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, RotateCcw, Lock, Unlock, Trophy, Volume2, VolumeX, Home, Pause, X } from 'lucide-react';
 
 // ============================================================================
-// [TiltBall 10 - High-Fidelity Global Master Build]
-// 1. Striking Ball Identity: Advanced Canvas 2D drawing for realistic sports balls.
-// 2. Global UI: 100% English, clean HUD with "STAGE N" display.
-// 3. Strict Progression: Locks enforced, "❓" for uncleared stages.
-// 4. Pure Physics: Tilt-based momentum collision, dynamic hole scaling.
+// [TiltBall 10 - Ultimate Layout & Sound Master Build]
+// 1. 100% Screen Layout Fix: Flexbox strictly separates the Top Bar and Canvas.
+//    - Canvas uses `object-contain` with padding to ensure all borders are visible.
+// 2. Distinct Ball Sounds: Procedural AudioContext synthesis tailored to each ball.
+//    - Basketball/Volleyball: Damped, hollow, mid-frequency.
+//    - Soccer: Deep, round, low-frequency.
+//    - Bowling: Short, heavy, dull, very low-frequency.
+//    - Baseball/Tennis: Sharp, pop-like, high-frequency.
+// 3. Maintained Core: English UI, Pinball Themes, Pure Physics, Custom Ball Art.
 // ============================================================================
 
 // 🎨 1. Theme System (High-Contrast Themes)
@@ -29,22 +33,21 @@ interface StageConfig {
   mass: number;       
   radius: number;     
   friction: number;   
-  basePitch: number;  
   holeMultiplier: number; 
   theme: Theme;       
 }
 
-const BALL_PROPS: { type: BallType; emoji: string; mass: number; radius: number; pitch: number }[] = [
-  { type: 'basketball', emoji: '🏀', mass: 3.0, radius: 22, pitch: 150 },
-  { type: 'soccer',     emoji: '⚽', mass: 2.5, radius: 20, pitch: 200 },
-  { type: 'volleyball', emoji: '🏐', mass: 2.0, radius: 18, pitch: 250 },
-  { type: 'softball',   emoji: '🥎', mass: 1.8, radius: 16, pitch: 300 },
-  { type: 'bowling',    emoji: '🎳', mass: 5.0, radius: 22, pitch: 100 },
-  { type: 'baseball',   emoji: '⚾', mass: 1.5, radius: 14, pitch: 400 },
-  { type: 'tennis',     emoji: '🎾', mass: 1.2, radius: 13, pitch: 500 },
-  { type: 'billiard',   emoji: '🎱', mass: 2.5, radius: 15, pitch: 350 },
-  { type: 'golf',       emoji: '⛳', mass: 1.0, radius: 10, pitch: 600 },
-  { type: 'pingpong',   emoji: '🏓', mass: 0.5, radius: 8,  pitch: 800 },
+const BALL_PROPS: { type: BallType; emoji: string; mass: number; radius: number }[] = [
+  { type: 'basketball', emoji: '🏀', mass: 3.0, radius: 22 },
+  { type: 'soccer',     emoji: '⚽', mass: 2.5, radius: 20 },
+  { type: 'volleyball', emoji: '🏐', mass: 2.0, radius: 18 },
+  { type: 'softball',   emoji: '🥎', mass: 1.8, radius: 16 },
+  { type: 'bowling',    emoji: '🎳', mass: 5.0, radius: 22 },
+  { type: 'baseball',   emoji: '⚾', mass: 1.5, radius: 14 },
+  { type: 'tennis',     emoji: '🎾', mass: 1.2, radius: 13 },
+  { type: 'billiard',   emoji: '🎱', mass: 2.5, radius: 15 },
+  { type: 'golf',       emoji: '⛳', mass: 1.0, radius: 10 },
+  { type: 'pingpong',   emoji: '🏓', mass: 0.5, radius: 8  },
 ];
 
 // 🗺️ 3. Generate 20 Stages (1~10: Level 1, 11~20: Level 2)
@@ -61,7 +64,6 @@ const STAGES: StageConfig[] = Array.from({ length: 20 }, (_, i) => {
     emoji: base.emoji,
     mass: base.mass,
     radius: base.radius,
-    basePitch: base.pitch,
     theme,
     friction: isLevel1 ? 0.98 : 0.99, 
     holeMultiplier: isLevel1 ? 1.7 : 1.3,
@@ -93,7 +95,7 @@ export default function App() {
 
   // 💾 Load Records
   useEffect(() => {
-    const saved = localStorage.getItem('tiltball_records_v6');
+    const saved = localStorage.getItem('tiltball_records_v7');
     if (saved) {
       try { setRecords(JSON.parse(saved)); } 
       catch (e) { console.error("Failed to load records.", e); }
@@ -105,11 +107,11 @@ export default function App() {
     if (!newRecords[stageId] || time < newRecords[stageId]) {
       newRecords[stageId] = time;
       setRecords(newRecords);
-      localStorage.setItem('tiltball_records_v6', JSON.stringify(newRecords));
+      localStorage.setItem('tiltball_records_v7', JSON.stringify(newRecords));
     }
   };
 
-  // 🎵 Procedural Audio System
+  // 🎵 Distinct Procedural Audio System
   const initAudio = () => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -117,24 +119,81 @@ export default function App() {
     if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
   };
 
-  const playCollisionSound = (velocity: number, basePitch: number) => {
+  const playCollisionSound = (velocity: number, type: BallType) => {
     if (!soundEnabled || !audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(basePitch + velocity * 10, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(basePitch * 0.5, ctx.currentTime + 0.1);
+    let oscType: OscillatorType = 'sine';
+    let freqStart = 200;
+    let freqEnd = 100;
+    let decay = 0.1;
+    let volMultiplier = 1.0;
+
+    // 🎛️ Sound Identity Logic based on Ball Type
+    switch (type) {
+      case 'basketball':
+      case 'volleyball':
+        oscType = 'triangle';
+        freqStart = 250 + velocity * 5;
+        freqEnd = 100;
+        decay = 0.15;
+        break;
+      case 'soccer':
+        oscType = 'sine';
+        freqStart = 150 + velocity * 5;
+        freqEnd = 80;
+        decay = 0.2;
+        break;
+      case 'bowling':
+        oscType = 'sine';
+        freqStart = 80 + velocity * 2;
+        freqEnd = 40;
+        decay = 0.08;
+        volMultiplier = 1.5; // Heavier sound
+        break;
+      case 'baseball':
+      case 'tennis':
+        oscType = 'square';
+        freqStart = 600 + velocity * 10;
+        freqEnd = 300;
+        decay = 0.05;
+        volMultiplier = 0.3; // Square waves are perceptually louder
+        break;
+      case 'billiard':
+        oscType = 'triangle';
+        freqStart = 400 + velocity * 10;
+        freqEnd = 200;
+        decay = 0.05;
+        break;
+      case 'golf':
+      case 'pingpong':
+        oscType = 'square';
+        freqStart = 800 + velocity * 15;
+        freqEnd = 600;
+        decay = 0.03;
+        volMultiplier = 0.2;
+        break;
+      default: // Fallback (softball, etc.)
+        oscType = 'sine';
+        freqStart = 200 + velocity * 10;
+        freqEnd = 100;
+        decay = 0.1;
+    }
+
+    osc.type = oscType;
+    osc.frequency.setValueAtTime(freqStart, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, ctx.currentTime + decay);
     
-    const volume = Math.min(velocity / 20, 0.5);
+    const volume = Math.min(velocity / 20, 0.5) * volMultiplier;
     gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + decay);
     
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.1);
+    osc.stop(ctx.currentTime + decay);
   };
 
   // 📱 Device Orientation Request
@@ -273,10 +332,10 @@ export default function App() {
       t.x += t.vx; t.y += t.vy;
 
       const handleWallCollision = (ball: any) => {
-        if (ball.x - ball.radius < marginX) { ball.x = marginX + ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), 400); }
-        if (ball.x + ball.radius > marginX + tableW) { ball.x = marginX + tableW - ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), 400); }
-        if (ball.y - ball.radius < marginY) { ball.y = marginY + ball.radius; ball.vy *= -0.8; playCollisionSound(Math.abs(ball.vy), 400); }
-        if (ball.y + ball.radius > marginY + tableH) { ball.y = marginY + tableH - ball.radius; ball.vy *= -0.8; playCollisionSound(Math.abs(ball.vy), 400); }
+        if (ball.x - ball.radius < marginX) { ball.x = marginX + ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), config.type); }
+        if (ball.x + ball.radius > marginX + tableW) { ball.x = marginX + tableW - ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), config.type); }
+        if (ball.y - ball.radius < marginY) { ball.y = marginY + ball.radius; ball.vy *= -0.8; playCollisionSound(Math.abs(ball.vy), config.type); }
+        if (ball.y + ball.radius > marginY + tableH) { ball.y = marginY + tableH - ball.radius; ball.vy *= -0.8; playCollisionSound(Math.abs(ball.vy), config.type); }
       };
       handleWallCollision(p);
       handleWallCollision(t);
@@ -302,7 +361,7 @@ export default function App() {
         t.vx += p_val * p.mass * nx;
         t.vy += p_val * p.mass * ny;
 
-        playCollisionSound(Math.abs(p_val), config.basePitch);
+        playCollisionSound(Math.abs(p_val), config.type);
       }
 
       const distToHoleP = Math.sqrt(Math.pow(p.x - hole.current.x, 2) + Math.pow(p.y - hole.current.y, 2));
@@ -566,20 +625,27 @@ export default function App() {
         {/* Start Screen */}
         {gameState === 'start' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-slate-950">
+            <style>{`
+              @keyframes button-pulse {
+                0%, 100% { box-shadow: 0 0 20px rgba(37,99,235,0.5); transform: scale(1); }
+                50% { box-shadow: 0 0 40px rgba(37,99,235,0.9); transform: scale(1.05); }
+              }
+              .animate-button-pulse {
+                animation: button-pulse 2s infinite ease-in-out;
+              }
+            `}</style>
             <div className="w-24 h-24 bg-blue-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_50px_rgba(59,130,246,0.5)]">
-              <span className="text-5xl">🎱</span>
+              <span className="text-5xl">🏀</span>
             </div>
             <h1 className="text-4xl font-black mb-4 tracking-tighter bg-gradient-to-r from-blue-400 to-emerald-400 text-transparent bg-clip-text">
               TiltBall 10
             </h1>
-            <p className="mb-8 text-slate-400 text-center text-sm leading-relaxed">
-              Tilt your device to steer!<br/>
-              Push the target ball (colored glow)<br/>
-              into the hole using your ball (white glow) to win.
+            <p className="mb-8 text-blue-100 text-center text-lg font-bold tracking-wide drop-shadow-[0_0_10px_rgba(59,130,246,0.8)]">
+              Tilt to hit the target ball into the hole!
             </p>
             <button 
               onClick={requestAccessAndEnterLobby}
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-lg flex items-center gap-2 transition-transform active:scale-95 shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+              className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-lg flex items-center gap-2 transition-colors active:scale-95 animate-button-pulse"
             >
               <Play fill="currentColor" />
               Start Game
@@ -615,11 +681,12 @@ export default function App() {
           </div>
         )}
 
-        {/* Game Playing Screen */}
+        {/* Game Playing Screen (Flexbox Layout Fix) */}
         {(gameState === 'playing' || gameState === 'paused' || gameState === 'clear' || gameState === 'gameover') && (
-          <>
-            {/* Top UI Bar */}
-            <div className="absolute top-0 left-0 w-full p-3 flex justify-between items-center z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+          <div className="flex flex-col w-full h-full bg-slate-950 relative">
+            
+            {/* Top UI Bar (Strictly separated from Canvas) */}
+            <div className="w-full p-3 flex justify-between items-center z-20 bg-slate-900 border-b border-slate-800 shrink-0">
               <button 
                 onClick={() => setGameState('lobby')}
                 className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 text-white transition-colors"
@@ -645,8 +712,10 @@ export default function App() {
               </div>
             </div>
 
-            {/* Canvas */}
-            <canvas ref={canvasRef} className="w-full h-full block" />
+            {/* Canvas Container (Padded to ensure borders are always visible) */}
+            <div className="flex-1 w-full p-3 sm:p-4 flex items-center justify-center overflow-hidden relative">
+              <canvas ref={canvasRef} className="w-full h-full object-contain block" />
+            </div>
 
             {/* Pause Modal */}
             {gameState === 'paused' && (
@@ -701,7 +770,7 @@ export default function App() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
