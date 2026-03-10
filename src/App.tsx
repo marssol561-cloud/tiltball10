@@ -2,15 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, RotateCcw, Lock, Unlock, Trophy, Volume2, VolumeX, Home, Pause, X } from 'lucide-react';
 
 // ============================================================================
-// [TiltBall 10 - Ultimate Layout & Sound Master Build]
-// 1. 100% Screen Layout Fix: Flexbox strictly separates the Top Bar and Canvas.
-//    - Canvas uses `object-contain` with padding to ensure all borders are visible.
-// 2. Distinct Ball Sounds: Procedural AudioContext synthesis tailored to each ball.
-//    - Basketball/Volleyball: Damped, hollow, mid-frequency.
-//    - Soccer: Deep, round, low-frequency.
-//    - Bowling: Short, heavy, dull, very low-frequency.
-//    - Baseball/Tennis: Sharp, pop-like, high-frequency.
-// 3. Maintained Core: English UI, Pinball Themes, Pure Physics, Custom Ball Art.
+// [TiltBall 10 - Ultimate Master Build]
+// 1. Celebratory Victory Sound: Triumphant arpeggio + crowd cheer (white noise).
+// 2. Distinct Ball Sounds: Unique procedural audio for each ball type.
+// 3. 100% Screen Layout Fix: Flexbox strictly separates Top Bar and Canvas.
+// 4. Start Screen Onboarding: Simplified instructions with pulse animation.
+// 5. Maintained Core: English UI, Pinball Themes, Pure Physics, Custom Ball Art.
 // ============================================================================
 
 // 🎨 1. Theme System (High-Contrast Themes)
@@ -95,7 +92,7 @@ export default function App() {
 
   // 💾 Load Records
   useEffect(() => {
-    const saved = localStorage.getItem('tiltball_records_v7');
+    const saved = localStorage.getItem('tiltball_records_v8');
     if (saved) {
       try { setRecords(JSON.parse(saved)); } 
       catch (e) { console.error("Failed to load records.", e); }
@@ -107,7 +104,7 @@ export default function App() {
     if (!newRecords[stageId] || time < newRecords[stageId]) {
       newRecords[stageId] = time;
       setRecords(newRecords);
-      localStorage.setItem('tiltball_records_v7', JSON.stringify(newRecords));
+      localStorage.setItem('tiltball_records_v8', JSON.stringify(newRecords));
     }
   };
 
@@ -194,6 +191,64 @@ export default function App() {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + decay);
+  };
+
+  // 🎉 Celebratory Victory Sound
+  const playVictorySound = () => {
+    if (!soundEnabled || !audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    // 1. Triumphant Arpeggio (C Major: C4, E4, G4, C5)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    
+    const notes = [261.63, 329.63, 392.00, 523.25];
+    const noteDuration = 0.12;
+    
+    notes.forEach((freq, i) => {
+      osc.frequency.setValueAtTime(freq, now + i * noteDuration);
+    });
+    
+    const totalMelodyTime = notes.length * noteDuration;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+    gain.gain.setValueAtTime(0.15, now + totalMelodyTime - 0.1);
+    gain.gain.linearRampToValueAtTime(0, now + totalMelodyTime);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + totalMelodyTime);
+
+    // 2. Crowd Cheer / Clapping (White Noise)
+    const bufferSize = ctx.sampleRate * 1.5; // 1.5 seconds
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = buffer;
+    
+    // Lowpass filter to make it sound like a distant crowd roar
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.value = 1000;
+    
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0, now);
+    noiseGain.gain.linearRampToValueAtTime(0.4, now + 0.3); // Swell up
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.5); // Fade out
+    
+    noiseSource.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    
+    noiseSource.start(now);
+    noiseSource.stop(now + 1.5);
   };
 
   // 📱 Device Orientation Request
@@ -374,6 +429,7 @@ export default function App() {
       } else if (distToHoleT < fallThreshold) {
         const finalTime = (accumulatedTimeRef.current + (Date.now() - sessionStartTimeRef.current)) / 1000;
         saveRecord(currentStage, finalTime);
+        playVictorySound(); // 🎺 Play Celebratory Sound!
         setGameState('clear'); 
       }
     };
