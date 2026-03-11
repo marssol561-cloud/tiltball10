@@ -1,21 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, RotateCcw, Lock, Unlock, Trophy, Home, Pause, X } from 'lucide-react';
+import { Play, RotateCcw, Lock, Unlock, Trophy, Home, Pause, X, Loader2 } from 'lucide-react';
 
 // ============================================================================
-// [TiltBall 10 - Audio Loading Stability Update]
-// 안녕! 시니어 게임 개발자로서 네가 요청한 Vercel 배포용 최종 코드를 완성했어.
+// [TiltBall 10 - Monetization & Global Production Update]
+// Hello! As a Senior Game Developer, I've prepared the final code for global
+// deployment with ad placements and a Level 2 Reward Gate.
 // 
-// 1. 안정적인 오디오 로딩 (Robust Audio Initialization):
-//    - 브라우저가 오디오를 불러오지 못하는 에러를 막기 위해, 전역 변수가 아닌 
-//      사용자가 "Start Game"을 누르는 순간(상호작용 발생 시)에 Audio 객체를 생성해.
-//    - audio.load()를 명시적으로 호출해서 버퍼를 채우고, 100ms의 짧은 대기 시간을 주어
-//      미디어 엔진이 준비될 시간을 확보했어.
-//    - .play() 함수에 .catch()를 달아서, 혹시라도 재생이 막히면 게임이 튕기지 않게 방어했지!
-// 2. 볼륨 제어: BGM은 0.35(35%) 고정, 효과음(SFX)은 1.0(100%)으로 분리했어.
-// 3. UI 및 레이아웃: 100% Area 모드 겹침 방지(flex-col), 펄스 애니메이션 등 모든 UI를 완벽하게 유지했어.
+// 1. Dynamic Ad Layouts:
+//    - Level 1: 60% Game Height, Ad Slot at the BOTTOM.
+//    - Level 2: 90% Game Height, Ad Slot at the TOP.
+// 2. Reward Gate (Interstitial):
+//    - Triggers after clearing Stage 10.
+//    - 3-second simulated "Loading Ad..." overlay before unlocking Level 2.
+// 3. Audio Control:
+//    - BGM (/bgm.mp3) pauses during menus, pause screens, and ad overlays.
+//    - SFX remains independent and unaffected by BGM mute.
+// 4. Global SEO & Integrity:
+//    - All UI text is in professional English.
+//    - Physics, ball textures, and tilt sensitivity remain exactly the same.
 // ============================================================================
 
-// 🎨 1. 테마 시스템 (우주, 바다, 화산, 사이버)
+// 🎨 1. Theme System
 type Theme = { name: string; bg: string; neon: string; comp: string };
 const THEMES: Theme[] = [
   { name: 'Space',   bg: '#020617', neon: '#06b6d4', comp: '#f97316' }, 
@@ -24,7 +29,7 @@ const THEMES: Theme[] = [
   { name: 'Cyber',   bg: '#000000', neon: '#d946ef', comp: '#84cc16' }, 
 ];
 
-// ⚽ 2. 공 종류와 물리적 특성
+// ⚽ 2. Ball Types & Physics Properties
 type BallType = 'basketball' | 'soccer' | 'billiard' | 'golf' | 'tennis' | 'baseball' | 'volleyball' | 'bowling' | 'pingpong' | 'softball';
 
 interface StageConfig {
@@ -52,7 +57,7 @@ const BALL_PROPS: { type: BallType; emoji: string; mass: number; radius: number 
   { type: 'pingpong',   emoji: '🏓', mass: 0.5, radius: 8  },
 ];
 
-// 🗺️ 3. 20개의 스테이지 자동 생성
+// 🗺️ 3. Stage Generation (20 Stages)
 const STAGES: StageConfig[] = Array.from({ length: 20 }, (_, i) => {
   const id = i + 1;
   const isLevel1 = id <= 10;
@@ -73,119 +78,174 @@ const STAGES: StageConfig[] = Array.from({ length: 20 }, (_, i) => {
 });
 
 export default function App() {
-  // 🎮 게임 상태 관리
-  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'paused' | 'clear' | 'gameover'>('start');
+  // 🎮 Game State Management
+  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'paused' | 'clear' | 'gameover' | 'reward_gate' | 'ad_loading'>('start');
   const [currentStage, setCurrentStage] = useState<number>(1);
   const [records, setRecords] = useState<Record<number, number>>({});
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [isLevel2Unlocked, setIsLevel2Unlocked] = useState<boolean>(false);
   
-  // 🎵 오디오 상태 관리
+  // 🎵 Audio State Management
   const [bgmEnabled, setBgmEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('tiltball_bgm');
     return saved !== null ? JSON.parse(saved) : true;
   });
-  const [bgmStatus, setBgmStatus] = useState<string>(''); // BGM 로딩 상태 표시용
   
-  // ⏱️ 타이머 상태 관리
+  // 🐛 Audio Debugging State
+  const [debugInfo, setDebugInfo] = useState({
+    tryingPath: '',
+    httpStatus: '',
+    errorCode: '',
+    errorMsg: '',
+    playStatus: ''
+  });
+  const [audioRetry, setAudioRetry] = useState(0);
+  
+  // ⏱️ Timer State Management
   const [displayTime, setDisplayTime] = useState(0);
   const accumulatedTimeRef = useRef(0);
   const sessionStartTimeRef = useRef(0);
 
-  // 캔버스와 물리엔진을 위한 Ref
+  // Canvas & Physics Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   
-  // 🎧 오디오 시스템을 위한 Ref
-  const audioCtxRef = useRef<AudioContext | null>(null); // 효과음(SFX) 전용
-  const bgmAudioRef = useRef<HTMLAudioElement | null>(null); // 외부 BGM 전용
+  // 🎧 Audio System Refs
+  const audioCtxRef = useRef<AudioContext | null>(null); // SFX
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null); // BGM
   
-  // 물리엔진 데이터
+  // Physics Data
   const player = useRef({ x: 50, y: 50, vx: 0, vy: 0, radius: 15, mass: 2.0 });
   const target = useRef({ x: 200, y: 200, vx: 0, vy: 0, radius: 20, mass: 2.0 });
   const hole = useRef({ x: 300, y: 300, radius: 30 });
   const tilt = useRef({ x: 0, y: 0 });
 
-  // 💾 게임 기록 불러오기
+  // 💾 Load Game Records
   useEffect(() => {
-    const saved = localStorage.getItem('tiltball_records_v8');
-    if (saved) {
-      try { setRecords(JSON.parse(saved)); } 
+    const savedRecords = localStorage.getItem('tiltball_records_v9');
+    if (savedRecords) {
+      try { setRecords(JSON.parse(savedRecords)); } 
       catch (e) { console.error("Failed to load records.", e); }
+    }
+    const savedUnlock = localStorage.getItem('tiltball_level2_unlocked');
+    if (savedUnlock) {
+      setIsLevel2Unlocked(JSON.parse(savedUnlock));
     }
   }, []);
 
-  // 💾 게임 기록 저장하기
+  // 💾 Save Game Records
   const saveRecord = (stageId: number, time: number) => {
     const newRecords = { ...records };
     if (!newRecords[stageId] || time < newRecords[stageId]) {
       newRecords[stageId] = time;
       setRecords(newRecords);
-      localStorage.setItem('tiltball_records_v8', JSON.stringify(newRecords));
+      localStorage.setItem('tiltball_records_v9', JSON.stringify(newRecords));
     }
   };
 
-  // 🎵 BGM 켜기/끄기 토글 (볼륨을 0.35 또는 0으로 변경)
+  // 🎵 Toggle BGM
   const toggleBgm = () => {
     const nextState = !bgmEnabled;
     setBgmEnabled(nextState);
     localStorage.setItem('tiltball_bgm', JSON.stringify(nextState));
     if (bgmAudioRef.current) {
-      bgmAudioRef.current.volume = nextState ? 0.35 : 0;
+      bgmAudioRef.current.volume = nextState ? 0.25 : 0;
     }
   };
 
-  // 🔊 오디오 시스템 초기화 (사용자 상호작용 시 호출됨)
+  // 🔊 Initialize Audio System
   const initAudio = () => {
-    // 1. 효과음(SFX) 초기화
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
 
-    // 2. 외부 BGM 초기화 (안정적인 로딩을 위해 여기서 명시적으로 생성 및 로드)
     if (!bgmAudioRef.current) {
-      const audio = new Audio('/bgm.mp3');
-      audio.loop = true;
-      audio.volume = bgmEnabled ? 0.35 : 0;
-      audio.load(); // 명시적으로 오디오 파일을 불러와 버퍼를 채움 (CRITICAL)
-      bgmAudioRef.current = audio;
+      const path1 = window.location.origin + "/bgm.mp3";
+      const path2 = "./bgm.mp3";
+      let fetchResolved = false;
+
+      const loadAudio = (srcPath: string) => {
+        setDebugInfo(p => ({ ...p, tryingPath: srcPath, httpStatus: 'Pending...' }));
+        
+        fetch(srcPath)
+          .then(res => {
+            fetchResolved = true;
+            setDebugInfo(p => ({ ...p, httpStatus: `${res.status} ${res.statusText}` }));
+          })
+          .catch(err => {
+            fetchResolved = true;
+            setDebugInfo(p => ({ ...p, httpStatus: `Fetch Error: ${err.message}` }));
+          });
+
+        const audio = new Audio(srcPath);
+        audio.loop = true;
+        audio.volume = bgmEnabled ? 0.25 : 0;
+        
+        audio.addEventListener('canplaythrough', () => {
+          setDebugInfo(p => ({ ...p, playStatus: 'Buffered (canplaythrough)' }));
+        });
+
+        audio.onerror = () => {
+          const err = audio.error;
+          if (err) {
+            let codeStr = err.code.toString();
+            if (err.code === 1) codeStr += " (Aborted)";
+            if (err.code === 2) codeStr += " (Network)";
+            if (err.code === 3) codeStr += " (Decode)";
+            if (err.code === 4) codeStr += " (Src Not Supported)";
+            
+            setDebugInfo(p => ({ 
+              ...p, 
+              errorCode: codeStr, 
+              errorMsg: err.message || 'No specific message provided by browser' 
+            }));
+          }
+        };
+
+        audio.load();
+        bgmAudioRef.current = audio;
+      };
+
+      loadAudio(path1);
+
+      setTimeout(() => {
+        if (!fetchResolved) {
+          console.log("Fetch pending for 3s, trying fallback path...");
+          loadAudio(path2);
+          setAudioRetry(r => r + 1);
+        }
+      }, 3000);
     }
   };
 
-  // 🔄 게임 상태에 따른 BGM 재생 로직 (CRITICAL)
+  // 🔄 BGM Playback Logic (Gameplay Only)
   useEffect(() => {
     const bgm = bgmAudioRef.current;
     if (!bgm) return;
 
-    // BGM 볼륨 동기화
     bgm.volume = bgmEnabled ? 0.25 : 0;
 
-    // 오직 게임 플레이 중일 때만 재생
     if (gameState === 'playing') {
-      console.log("BGM Attempting to play from /bgm.mp3");
-      setBgmStatus('Audio File Note: Loading...');
+      console.log(`BGM Attempting to play from ${debugInfo.tryingPath}`);
+      setDebugInfo(p => ({ ...p, playStatus: 'Attempting to play...' }));
       
-      // 미디어 엔진이 준비될 수 있도록 100ms의 짧은 지연 시간 추가
-      const playTimer = setTimeout(() => {
-        const playPromise = bgm.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            setBgmStatus(''); // 성공적으로 재생되면 메시지 숨김
-          }).catch(e => {
-            console.warn("BGM Playback failed:", e);
-            setBgmStatus('Audio File Note: Error / Missing'); // 에러 발생 시 상태 표시
-          });
-        }
-      }, 100);
-
-      return () => clearTimeout(playTimer);
+      const playPromise = bgm.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          setDebugInfo(p => ({ ...p, playStatus: 'Playing successfully' }));
+        }).catch(e => {
+          console.warn("BGM Playback failed:", e);
+          setDebugInfo(p => ({ ...p, playStatus: `Play Error: ${e.message}` }));
+        });
+      }
     } else {
-      // 일시정지, 클리어, 로비 등에서는 즉시 멈춤
       bgm.pause();
+      setDebugInfo(p => ({ ...p, playStatus: 'Paused (Not in playing state)' }));
     }
-  }, [gameState, bgmEnabled]);
+  }, [gameState, bgmEnabled, audioRetry]);
 
-  // 💥 효과음(SFX): 항상 1.0 볼륨으로 재생 (BGM 설정과 무관)
+  // 💥 SFX: Collision Sounds (Always 1.0 Volume)
   const playCollisionSound = (velocity: number, type: BallType) => {
     if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
@@ -252,7 +312,6 @@ export default function App() {
     osc.frequency.setValueAtTime(freqStart, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(freqEnd, ctx.currentTime + decay);
     
-    // SFX 볼륨은 BGM 설정과 무관하게 독립적으로 작동 (최대 0.8 * volMultiplier)
     const volume = Math.min(velocity / 20, 0.8) * volMultiplier;
     gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + decay);
@@ -263,7 +322,7 @@ export default function App() {
     osc.stop(ctx.currentTime + decay);
   };
 
-  // 🎉 효과음(SFX): 스테이지 클리어 팡파르 (항상 1.0 볼륨)
+  // 🎉 SFX: Victory Fanfare (Always 1.0 Volume)
   const playVictorySound = () => {
     if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
@@ -282,7 +341,7 @@ export default function App() {
     
     const totalMelodyTime = notes.length * noteDuration;
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.5, now + 0.05); // 50% 볼륨으로 크고 명확하게
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.05); 
     gain.gain.setValueAtTime(0.5, now + totalMelodyTime - 0.1);
     gain.gain.linearRampToValueAtTime(0, now + totalMelodyTime);
     
@@ -307,7 +366,7 @@ export default function App() {
     
     const noiseGain = ctx.createGain();
     noiseGain.gain.setValueAtTime(0, now);
-    noiseGain.gain.linearRampToValueAtTime(0.8, now + 0.3); // 환호성 80% 볼륨
+    noiseGain.gain.linearRampToValueAtTime(0.8, now + 0.3); 
     noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
     
     noiseSource.connect(noiseFilter);
@@ -318,9 +377,9 @@ export default function App() {
     noiseSource.stop(now + 1.5);
   };
 
-  // 📱 스마트폰 센서 권한 요청 및 로비 진입
+  // 📱 Request Sensor Access & Enter Lobby
   const requestAccessAndEnterLobby = async () => {
-    initAudio(); // 사용자 상호작용 시 오디오 객체 생성 및 로드
+    initAudio(); 
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       try {
         const permission = await (DeviceOrientationEvent as any).requestPermission();
@@ -349,7 +408,7 @@ export default function App() {
     tilt.current = { x: gamma / 45, y: beta / 45 };
   };
 
-  // 💻 PC 키보드 조작 로직
+  // 💻 PC Keyboard Controls
   const keys = useRef<{ [key: string]: boolean }>({});
   const handleKeyDown = (e: KeyboardEvent) => { keys.current[e.key] = true; updateTiltFromKeys(); };
   const handleKeyUp = (e: KeyboardEvent) => { keys.current[e.key] = false; updateTiltFromKeys(); };
@@ -362,7 +421,7 @@ export default function App() {
     tilt.current = { x: tx, y: ty };
   };
 
-  // 🚀 스테이지 시작 함수
+  // 🚀 Start Stage
   const startStage = (stageId: number) => {
     const config = STAGES[stageId - 1];
     setCurrentStage(stageId);
@@ -415,7 +474,17 @@ export default function App() {
     }
   };
 
-  // ⚙️ 물리엔진 및 화면 그리기
+  // 📺 Ad Reward Logic
+  const handleWatchAd = () => {
+    setGameState('ad_loading');
+    setTimeout(() => {
+      setIsLevel2Unlocked(true);
+      localStorage.setItem('tiltball_level2_unlocked', JSON.stringify(true));
+      setGameState('lobby');
+    }, 3000);
+  };
+
+  // ⚙️ Physics Engine & Rendering
   useEffect(() => {
     if (gameState !== 'playing') {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -497,7 +566,13 @@ export default function App() {
         const finalTime = (accumulatedTimeRef.current + (Date.now() - sessionStartTimeRef.current)) / 1000;
         saveRecord(currentStage, finalTime);
         playVictorySound();
-        setGameState('clear'); 
+        
+        // Trigger Reward Gate if Stage 10 is cleared and Level 2 is locked
+        if (currentStage === 10 && !isLevel2Unlocked) {
+          setGameState('reward_gate');
+        } else {
+          setGameState('clear'); 
+        }
       }
     };
 
@@ -683,9 +758,7 @@ export default function App() {
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [gameState, currentStage]);
-
-  const isLevel2Unlocked = records[10] !== undefined;
+  }, [gameState, currentStage, isLevel2Unlocked]);
 
   const renderStageGrid = (start: number, end: number) => (
     <div className="grid grid-cols-5 gap-2 sm:gap-3">
@@ -726,20 +799,23 @@ export default function App() {
     </div>
   );
 
+  // Determine layout based on current stage level
+  const isLevel1 = currentStage <= 10;
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center font-sans">
       <div className="relative w-full max-w-[400px] aspect-[9/16] max-h-screen bg-slate-950 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden sm:rounded-3xl sm:border-4 border-slate-800 flex flex-col">
         
-        {/* BGM 상태 표시 UI (디버깅 및 로딩 안내용) */}
-        {bgmStatus && (
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center z-50 pointer-events-none">
-            <span className="text-[10px] text-slate-300 bg-black/60 px-3 py-1 rounded-full border border-slate-700">
-              {bgmStatus}
-            </span>
-          </div>
-        )}
+        {/* 🐛 Audio Debugging Panel (Hidden in Production, kept for safety) */}
+        <div className="hidden absolute top-0 left-0 right-0 z-50 p-2 pointer-events-none bg-black/80 text-[10px] text-red-500 font-mono flex-col gap-0.5">
+          <div className="break-all">Trying Path: {debugInfo.tryingPath || 'Pending...'}</div>
+          <div>HTTP Status: {debugInfo.httpStatus || 'Pending...'}</div>
+          <div>ErrCode: {debugInfo.errorCode || 'None'}</div>
+          <div>ErrMsg: {debugInfo.errorMsg || 'None'}</div>
+          <div>Status: {debugInfo.playStatus || 'Idle'}</div>
+        </div>
 
-        {/* 1. 시작 화면 */}
+        {/* 1. Start Screen */}
         {gameState === 'start' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-slate-950">
             <style>{`
@@ -770,10 +846,10 @@ export default function App() {
           </div>
         )}
 
-        {/* 2. 로비 화면 */}
+        {/* 2. Lobby Screen */}
         {gameState === 'lobby' && (
           <div className="absolute inset-0 z-10 p-4 overflow-y-auto bg-slate-950 flex flex-col scrollbar-hide">
-            <div className="flex justify-between w-full mb-6 items-center mt-2">
+            <div className="flex justify-between w-full mb-6 items-center mt-8">
               <h1 className="text-2xl font-black tracking-tighter text-white">Select Stage</h1>
               <button onClick={toggleBgm} className="p-2 bg-slate-800 rounded-full text-slate-300 hover:text-white flex items-center justify-center w-10 h-10">
                 <span className="text-lg">{bgmEnabled ? '🎵' : '🔇'}</span>
@@ -798,10 +874,18 @@ export default function App() {
           </div>
         )}
 
-        {/* 3. 게임 플레이 화면 (flex-col 레이아웃 유지) */}
-        {(gameState === 'playing' || gameState === 'paused' || gameState === 'clear' || gameState === 'gameover') && (
+        {/* 3. Game Play Screen (Dynamic Layout for Ads) */}
+        {(gameState === 'playing' || gameState === 'paused' || gameState === 'clear' || gameState === 'gameover' || gameState === 'reward_gate' || gameState === 'ad_loading') && (
           <div className="flex flex-col w-full h-full bg-slate-950 relative">
             
+            {/* Level 2 Ad Slot (TOP) */}
+            {!isLevel1 && (
+              <div className="w-full h-[60px] bg-[#1a1a1a] border-b border-slate-800 flex items-center justify-center shrink-0">
+                <span className="text-[10px] text-gray-500 tracking-widest uppercase">Advertisement</span>
+              </div>
+            )}
+
+            {/* Top Bar */}
             <div className="w-full p-3 flex justify-between items-center z-20 bg-slate-900 border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
                 <button 
@@ -835,11 +919,19 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex-1 w-full p-3 sm:p-4 flex items-center justify-center overflow-hidden relative">
+            {/* Game Canvas Container (Dynamic Height) */}
+            <div className={`w-full flex items-center justify-center overflow-hidden relative ${isLevel1 ? 'h-[60%]' : 'h-[90%]'}`}>
               <canvas ref={canvasRef} className="w-full h-full object-contain block" />
             </div>
 
-            {/* 일시정지 모달 */}
+            {/* Level 1 Ad Slot (BOTTOM) */}
+            {isLevel1 && (
+              <div className="w-full h-[60px] bg-[#1a1a1a] border-t border-slate-800 flex items-center justify-center shrink-0 mt-auto">
+                <span className="text-[10px] text-gray-500 tracking-widest uppercase">Advertisement</span>
+              </div>
+            )}
+
+            {/* Pause Modal */}
             {gameState === 'paused' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <h2 className="text-3xl font-black text-white mb-8 tracking-widest">PAUSED</h2>
@@ -857,7 +949,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 클리어 모달 */}
+            {/* Clear Modal */}
             {gameState === 'clear' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <div className="text-5xl mb-4 animate-bounce">🎉</div>
@@ -876,7 +968,43 @@ export default function App() {
               </div>
             )}
 
-            {/* 게임오버 모달 */}
+            {/* Reward Gate Modal (Interstitial) */}
+            {gameState === 'reward_gate' && (
+              <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-40 p-6 text-center">
+                <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mb-6 border border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+                  <Unlock size={40} className="text-emerald-400" />
+                </div>
+                <h2 className="text-2xl font-black text-white mb-4 leading-tight">
+                  Unlock Professional<br/>Level 2 Stages!
+                </h2>
+                <p className="text-slate-400 mb-8 text-sm max-w-[250px]">
+                  Watch a short ad to permanently unlock the next 10 challenging stages.
+                </p>
+                <button 
+                  onClick={handleWatchAd}
+                  className="w-full max-w-[250px] py-4 bg-emerald-600 hover:bg-emerald-500 rounded-full font-bold flex items-center justify-center gap-2 text-white text-lg transition-transform active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                >
+                  <Play size={20} fill="currentColor" /> Watch Ad to Unlock
+                </button>
+                <button 
+                  onClick={() => setGameState('lobby')}
+                  className="mt-4 text-slate-500 text-sm hover:text-slate-300 underline underline-offset-4"
+                >
+                  Maybe later
+                </button>
+              </div>
+            )}
+
+            {/* Ad Loading Overlay */}
+            {gameState === 'ad_loading' && (
+              <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-50">
+                <Loader2 size={48} className="text-emerald-500 animate-spin mb-4" />
+                <p className="text-white font-bold tracking-widest animate-pulse">LOADING AD...</p>
+                <p className="text-slate-500 text-xs mt-2">Please wait</p>
+              </div>
+            )}
+
+            {/* Game Over Modal */}
             {gameState === 'gameover' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <div className="text-5xl mb-4">💀</div>
