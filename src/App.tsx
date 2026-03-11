@@ -158,7 +158,7 @@ export default function App() {
     if (!bgm) return;
 
     // BGM 볼륨 동기화
-    bgm.volume = bgmEnabled ? 0.35 : 0;
+    bgm.volume = bgmEnabled ? 0.25 : 0;
 
     // 오직 게임 플레이 중일 때만 재생
     if (gameState === 'playing') {
