@@ -2,13 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, RotateCcw, Lock, Unlock, Trophy, Home, Pause, X } from 'lucide-react';
 
 // ============================================================================
-// [TiltBall 10 - Final Production Build (External BGM)]
+// [TiltBall 10 - Audio Loading Stability Update]
 // 안녕! 시니어 게임 개발자로서 네가 요청한 Vercel 배포용 최종 코드를 완성했어.
 // 
-// 1. 외부 BGM 적용: 오직 '/bgm.mp3' 파일만 사용하도록 코드를 완전히 수정했어. (Synthesizer 제거)
+// 1. 안정적인 오디오 로딩 (Robust Audio Initialization):
+//    - 브라우저가 오디오를 불러오지 못하는 에러를 막기 위해, 전역 변수가 아닌 
+//      사용자가 "Start Game"을 누르는 순간(상호작용 발생 시)에 Audio 객체를 생성해.
+//    - audio.load()를 명시적으로 호출해서 버퍼를 채우고, 100ms의 짧은 대기 시간을 주어
+//      미디어 엔진이 준비될 시간을 확보했어.
+//    - .play() 함수에 .catch()를 달아서, 혹시라도 재생이 막히면 게임이 튕기지 않게 방어했지!
 // 2. 볼륨 제어: BGM은 0.35(35%) 고정, 효과음(SFX)은 1.0(100%)으로 분리했어.
-// 3. 디버깅 및 에러 처리: BGM 로딩 상태를 화면 하단에 작게 표시하고, 콘솔에 로그를 남기도록 했어.
-// 4. UI 및 레이아웃: 100% Area 모드 겹침 방지(flex-col), 펄스 애니메이션 등 모든 UI를 완벽하게 유지했어.
+// 3. UI 및 레이아웃: 100% Area 모드 겹침 방지(flex-col), 펄스 애니메이션 등 모든 UI를 완벽하게 유지했어.
 // ============================================================================
 
 // 🎨 1. 테마 시스템 (우주, 바다, 화산, 사이버)
@@ -130,7 +134,7 @@ export default function App() {
     }
   };
 
-  // 🔊 오디오 시스템 초기화
+  // 🔊 오디오 시스템 초기화 (사용자 상호작용 시 호출됨)
   const initAudio = () => {
     // 1. 효과음(SFX) 초기화
     if (!audioCtxRef.current) {
@@ -138,42 +142,50 @@ export default function App() {
     }
     if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
 
-    // 2. 외부 BGM 초기화 (public/bgm.mp3)
+    // 2. 외부 BGM 초기화 (안정적인 로딩을 위해 여기서 명시적으로 생성 및 로드)
     if (!bgmAudioRef.current) {
-      bgmAudioRef.current = new Audio('/bgm.mp3');
-      bgmAudioRef.current.loop = true;
-      bgmAudioRef.current.volume = bgmEnabled ? 0.35 : 0;
+      const audio = new Audio('/bgm.mp3');
+      audio.loop = true;
+      audio.volume = bgmEnabled ? 0.35 : 0;
+      audio.load(); // 명시적으로 오디오 파일을 불러와 버퍼를 채움 (CRITICAL)
+      bgmAudioRef.current = audio;
     }
   };
 
   // 🔄 게임 상태에 따른 BGM 재생 로직 (CRITICAL)
   useEffect(() => {
-    if (!bgmAudioRef.current) return;
+    const bgm = bgmAudioRef.current;
+    if (!bgm) return;
 
     // BGM 볼륨 동기화
-    bgmAudioRef.current.volume = bgmEnabled ? 0.35 : 0;
+    bgm.volume = bgmEnabled ? 0.35 : 0;
 
     // 오직 게임 플레이 중일 때만 재생
     if (gameState === 'playing') {
       console.log("BGM Attempting to play from /bgm.mp3");
       setBgmStatus('Audio File Note: Loading...');
       
-      const playPromise = bgmAudioRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          setBgmStatus(''); // 성공적으로 재생되면 메시지 숨김
-        }).catch(e => {
-          console.warn("BGM Playback failed:", e);
-          setBgmStatus('Audio File Note: Error / Missing'); // 에러 발생 시 상태 표시
-        });
-      }
+      // 미디어 엔진이 준비될 수 있도록 100ms의 짧은 지연 시간 추가
+      const playTimer = setTimeout(() => {
+        const playPromise = bgm.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            setBgmStatus(''); // 성공적으로 재생되면 메시지 숨김
+          }).catch(e => {
+            console.warn("BGM Playback failed:", e);
+            setBgmStatus('Audio File Note: Error / Missing'); // 에러 발생 시 상태 표시
+          });
+        }
+      }, 100);
+
+      return () => clearTimeout(playTimer);
     } else {
       // 일시정지, 클리어, 로비 등에서는 즉시 멈춤
-      bgmAudioRef.current.pause();
+      bgm.pause();
     }
   }, [gameState, bgmEnabled]);
 
-  // 💥 효과음(SFX): 항상 1.0 볼륨으로 재생
+  // 💥 효과음(SFX): 항상 1.0 볼륨으로 재생 (BGM 설정과 무관)
   const playCollisionSound = (velocity: number, type: BallType) => {
     if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
@@ -308,7 +320,7 @@ export default function App() {
 
   // 📱 스마트폰 센서 권한 요청 및 로비 진입
   const requestAccessAndEnterLobby = async () => {
-    initAudio();
+    initAudio(); // 사용자 상호작용 시 오디오 객체 생성 및 로드
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       try {
         const permission = await (DeviceOrientationEvent as any).requestPermission();
