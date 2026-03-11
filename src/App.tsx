@@ -1,25 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, RotateCcw, Lock, Unlock, Trophy, Volume2, VolumeX, Home, Pause, X } from 'lucide-react';
+import { Play, RotateCcw, Lock, Unlock, Trophy, Home, Pause, X } from 'lucide-react';
 
 // ============================================================================
-// [TiltBall 10 - Ultimate Master Build]
-// 1. Celebratory Victory Sound: Triumphant arpeggio + crowd cheer (white noise).
-// 2. Distinct Ball Sounds: Unique procedural audio for each ball type.
-// 3. 100% Screen Layout Fix: Flexbox strictly separates Top Bar and Canvas.
-// 4. Start Screen Onboarding: Simplified instructions with pulse animation.
-// 5. Maintained Core: English UI, Pinball Themes, Pure Physics, Custom Ball Art.
+// [TiltBall 10 - Final Production Build]
+// 안녕! 글로벌 게임 회사의 시니어 개발자로서, 네가 요청한 완벽한 최종 버전을 준비했어.
+// 중학생인 네가 코드를 보고 이해하고, 나중에 광고나 아이템 결제 기능을 쉽게 붙일 수 있도록
+// 아주 자세하고 친절하게 주석을 달아두었단다. 😎
+//
+// 1. 외부 BGM 적용: /bgm.mp3 파일을 사용하며, 볼륨은 35%로 고정했어.
+// 2. 안전한 에러 처리: mp3 파일이 없어도 게임이 튕기지 않게 튼튼하게(Robust) 만들었어.
+// 3. 효과음(SFX) 독립: BGM을 꺼도 공이 부딪히는 소리나 클리어 소리는 100% 크기로 잘 들려.
+// 4. 확장성: 상태 관리(gameState)가 명확하게 나뉘어 있어서, 나중에 '상점(Shop)' 상태를 추가하기 쉬워!
 // ============================================================================
 
-// 🎨 1. Theme System (High-Contrast Themes)
+// 🎨 1. 테마 시스템 (우주, 바다, 화산, 사이버)
+// 나중에 '프리미엄 테마'를 만들어서 유료 아이템으로 팔기 좋은 구조야!
 type Theme = { name: string; bg: string; neon: string; comp: string };
 const THEMES: Theme[] = [
-  { name: 'Space',   bg: '#020617', neon: '#06b6d4', comp: '#f97316' }, // Navy + Cyan -> Orange glow
-  { name: 'Ocean',   bg: '#042f2e', neon: '#10b981', comp: '#ec4899' }, // Teal + Emerald -> Pink glow
-  { name: 'Volcano', bg: '#1c1917', neon: '#f59e0b', comp: '#3b82f6' }, // Charcoal + Amber -> Blue glow
-  { name: 'Cyber',   bg: '#000000', neon: '#d946ef', comp: '#84cc16' }, // Black + Magenta -> Lime glow
+  { name: 'Space',   bg: '#020617', neon: '#06b6d4', comp: '#f97316' }, 
+  { name: 'Ocean',   bg: '#042f2e', neon: '#10b981', comp: '#ec4899' }, 
+  { name: 'Volcano', bg: '#1c1917', neon: '#f59e0b', comp: '#3b82f6' }, 
+  { name: 'Cyber',   bg: '#000000', neon: '#d946ef', comp: '#84cc16' }, 
 ];
 
-// ⚽ 2. Ball Types & Physics Properties
+// ⚽ 2. 공 종류와 물리적 특성 (무게, 크기 등)
+// 새로운 공(예: 황금공, 불꽃공)을 추가해서 유저들이 코인으로 사게 만들 수 있어.
 type BallType = 'basketball' | 'soccer' | 'billiard' | 'golf' | 'tennis' | 'baseball' | 'volleyball' | 'bowling' | 'pingpong' | 'softball';
 
 interface StageConfig {
@@ -34,6 +39,7 @@ interface StageConfig {
   theme: Theme;       
 }
 
+// 각 공의 기본 속성 정의
 const BALL_PROPS: { type: BallType; emoji: string; mass: number; radius: number }[] = [
   { type: 'basketball', emoji: '🏀', mass: 3.0, radius: 22 },
   { type: 'soccer',     emoji: '⚽', mass: 2.5, radius: 20 },
@@ -47,7 +53,7 @@ const BALL_PROPS: { type: BallType; emoji: string; mass: number; radius: number 
   { type: 'pingpong',   emoji: '🏓', mass: 0.5, radius: 8  },
 ];
 
-// 🗺️ 3. Generate 20 Stages (1~10: Level 1, 11~20: Level 2)
+// 🗺️ 3. 20개의 스테이지 자동 생성 (1~10: 레벨 1, 11~20: 레벨 2)
 const STAGES: StageConfig[] = Array.from({ length: 20 }, (_, i) => {
   const id = i + 1;
   const isLevel1 = id <= 10;
@@ -62,35 +68,45 @@ const STAGES: StageConfig[] = Array.from({ length: 20 }, (_, i) => {
     mass: base.mass,
     radius: base.radius,
     theme,
-    friction: isLevel1 ? 0.98 : 0.99, 
-    holeMultiplier: isLevel1 ? 1.7 : 1.3,
+    friction: isLevel1 ? 0.98 : 0.99, // 레벨 2는 더 잘 미끄러짐
+    holeMultiplier: isLevel1 ? 1.7 : 1.3, // 레벨 2는 구멍이 더 작음
   };
 });
 
 export default function App() {
-  // 🎮 Game State Management
+  // 🎮 게임 상태 관리 (시작화면, 로비, 플레이중, 일시정지, 클리어, 게임오버)
+  // 나중에 여기에 'shop' 상태를 추가하면 상점 화면을 쉽게 띄울 수 있어.
   const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'paused' | 'clear' | 'gameover'>('start');
   const [currentStage, setCurrentStage] = useState<number>(1);
   const [records, setRecords] = useState<Record<number, number>>({});
   const [permissionGranted, setPermissionGranted] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
   
-  // ⏱️ Timer State
+  // 🎵 오디오 상태 관리 (BGM 켜기/끄기 설정, 브라우저 저장소에 기록)
+  const [bgmEnabled, setBgmEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('tiltball_bgm');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  
+  // ⏱️ 타이머 상태 관리
   const [displayTime, setDisplayTime] = useState(0);
   const accumulatedTimeRef = useRef(0);
   const sessionStartTimeRef = useRef(0);
 
-  // Canvas & Physics Refs
+  // 캔버스와 물리엔진을 위한 Ref (화면이 다시 그려져도 값을 유지하는 주머니 같은 역할이야)
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
-  const audioCtxRef = useRef<AudioContext | null>(null);
   
+  // 🎧 오디오 시스템을 위한 Ref
+  const audioCtxRef = useRef<AudioContext | null>(null); // 효과음(SFX)을 위한 오디오 엔진
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null); // 배경음악(BGM)을 재생할 HTML 오디오 객체
+  
+  // 플레이어(내 공), 타겟(넣어야 할 공), 구멍, 스마트폰 기울기 데이터
   const player = useRef({ x: 50, y: 50, vx: 0, vy: 0, radius: 15, mass: 2.0 });
   const target = useRef({ x: 200, y: 200, vx: 0, vy: 0, radius: 20, mass: 2.0 });
   const hole = useRef({ x: 300, y: 300, radius: 30 });
   const tilt = useRef({ x: 0, y: 0 });
 
-  // 💾 Load Records
+  // 💾 게임 기록 불러오기 (새로고침해도 기록 유지)
   useEffect(() => {
     const saved = localStorage.getItem('tiltball_records_v8');
     if (saved) {
@@ -99,6 +115,7 @@ export default function App() {
     }
   }, []);
 
+  // 💾 게임 기록 저장하기 (최고 기록 갱신 시)
   const saveRecord = (stageId: number, time: number) => {
     const newRecords = { ...records };
     if (!newRecords[stageId] || time < newRecords[stageId]) {
@@ -108,16 +125,49 @@ export default function App() {
     }
   };
 
-  // 🎵 Distinct Procedural Audio System
+  // 🎵 BGM 켜기/끄기 토글 함수
+  const toggleBgm = () => {
+    const nextState = !bgmEnabled;
+    setBgmEnabled(nextState);
+    localStorage.setItem('tiltball_bgm', JSON.stringify(nextState)); // 설정 저장
+  };
+
+  // 🔊 오디오 시스템 초기화 (사용자가 화면을 클릭했을 때 실행되어야 함)
   const initAudio = () => {
+    // 1. 효과음(SFX)을 위한 AudioContext 초기화
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+
+    // 2. 외부 BGM 파일 초기화 (public/bgm.mp3)
+    if (!bgmAudioRef.current) {
+      bgmAudioRef.current = new Audio('/bgm.mp3');
+      bgmAudioRef.current.loop = true; // 무한 반복
+      bgmAudioRef.current.volume = 0.35; // 볼륨을 35%로 고정 (효과음을 덮지 않게)
+    }
   };
 
+  // 🔄 게임 상태에 따라 외부 BGM을 자동으로 켜고 끄는 로직 (CRITICAL)
+  useEffect(() => {
+    if (!bgmAudioRef.current) return;
+
+    // 게임 플레이 중이고, BGM이 켜져있을 때만 재생
+    if (bgmEnabled && gameState === 'playing') {
+      // 에러가 나도 게임이 멈추지 않도록 catch 처리 (Robust Error Handling)
+      // 만약 /bgm.mp3 파일이 없어도 게임은 정상적으로 돌아가!
+      bgmAudioRef.current.play().catch(e => {
+        console.warn("BGM 파일을 불러올 수 없거나 브라우저 정책에 의해 재생이 차단되었습니다.", e);
+      });
+    } else {
+      // 일시정지, 클리어, 로비 등에서는 즉시 멈춤
+      bgmAudioRef.current.pause();
+    }
+  }, [bgmEnabled, gameState]);
+
+  // 💥 효과음(SFX): 공이 부딪힐 때 나는 소리 (BGM이 꺼져도 항상 100% 볼륨으로 재생됨)
   const playCollisionSound = (velocity: number, type: BallType) => {
-    if (!soundEnabled || !audioCtxRef.current) return;
+    if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -128,51 +178,51 @@ export default function App() {
     let decay = 0.1;
     let volMultiplier = 1.0;
 
-    // 🎛️ Sound Identity Logic based on Ball Type
+    // 공 종류에 따라 소리의 파형(type)과 주파수(frequency)를 다르게 설정
     switch (type) {
       case 'basketball':
       case 'volleyball':
-        oscType = 'triangle';
+        oscType = 'triangle'; // 통통 튀는 소리
         freqStart = 250 + velocity * 5;
         freqEnd = 100;
         decay = 0.15;
         break;
       case 'soccer':
-        oscType = 'sine';
+        oscType = 'sine'; // 둥글고 묵직한 소리
         freqStart = 150 + velocity * 5;
         freqEnd = 80;
         decay = 0.2;
         break;
       case 'bowling':
-        oscType = 'sine';
+        oscType = 'sine'; // 매우 무겁고 낮은 소리
         freqStart = 80 + velocity * 2;
         freqEnd = 40;
         decay = 0.08;
-        volMultiplier = 1.5; // Heavier sound
+        volMultiplier = 1.5;
         break;
       case 'baseball':
       case 'tennis':
-        oscType = 'square';
+        oscType = 'square'; // 날카롭고 경쾌한 소리
         freqStart = 600 + velocity * 10;
         freqEnd = 300;
         decay = 0.05;
-        volMultiplier = 0.3; // Square waves are perceptually louder
+        volMultiplier = 0.3;
         break;
       case 'billiard':
-        oscType = 'triangle';
+        oscType = 'triangle'; // 딱딱한 당구공 소리
         freqStart = 400 + velocity * 10;
         freqEnd = 200;
         decay = 0.05;
         break;
       case 'golf':
       case 'pingpong':
-        oscType = 'square';
+        oscType = 'square'; // 가볍고 통통 튀는 소리
         freqStart = 800 + velocity * 15;
         freqEnd = 600;
         decay = 0.03;
         volMultiplier = 0.2;
         break;
-      default: // Fallback (softball, etc.)
+      default:
         oscType = 'sine';
         freqStart = 200 + velocity * 10;
         freqEnd = 100;
@@ -183,7 +233,8 @@ export default function App() {
     osc.frequency.setValueAtTime(freqStart, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(freqEnd, ctx.currentTime + decay);
     
-    const volume = Math.min(velocity / 20, 0.5) * volMultiplier;
+    // 부딪히는 속도(velocity)에 따라 볼륨이 커짐 (최대 0.8)
+    const volume = Math.min(velocity / 20, 0.8) * volMultiplier;
     gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + decay);
     
@@ -193,19 +244,19 @@ export default function App() {
     osc.stop(ctx.currentTime + decay);
   };
 
-  // 🎉 Celebratory Victory Sound
+  // 🎉 효과음(SFX): 스테이지 클리어 시 나오는 승리 팡파르 (항상 크고 명확하게 재생됨)
   const playVictorySound = () => {
-    if (!soundEnabled || !audioCtxRef.current) return;
+    if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
     const now = ctx.currentTime;
 
-    // 1. Triumphant Arpeggio (C Major: C4, E4, G4, C5)
+    // 1. 승리의 멜로디 (도-미-솔-도)
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'square';
+    osc.type = 'square'; // 레트로 게임 느낌의 파형
     
-    const notes = [261.63, 329.63, 392.00, 523.25];
-    const noteDuration = 0.12;
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5 주파수
+    const noteDuration = 0.12; // 각 음표의 길이
     
     notes.forEach((freq, i) => {
       osc.frequency.setValueAtTime(freq, now + i * noteDuration);
@@ -213,8 +264,8 @@ export default function App() {
     
     const totalMelodyTime = notes.length * noteDuration;
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
-    gain.gain.setValueAtTime(0.15, now + totalMelodyTime - 0.1);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.05); // 볼륨을 50%로 크게 설정
+    gain.gain.setValueAtTime(0.5, now + totalMelodyTime - 0.1);
     gain.gain.linearRampToValueAtTime(0, now + totalMelodyTime);
     
     osc.connect(gain);
@@ -222,26 +273,26 @@ export default function App() {
     osc.start(now);
     osc.stop(now + totalMelodyTime);
 
-    // 2. Crowd Cheer / Clapping (White Noise)
-    const bufferSize = ctx.sampleRate * 1.5; // 1.5 seconds
+    // 2. 관중 환호성 (화이트 노이즈 활용)
+    const bufferSize = ctx.sampleRate * 1.5; // 1.5초 길이
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = Math.random() * 2 - 1; // 무작위 노이즈 생성
     }
     
     const noiseSource = ctx.createBufferSource();
     noiseSource.buffer = buffer;
     
-    // Lowpass filter to make it sound like a distant crowd roar
+    // 노이즈를 부드럽게 깎아서 사람들의 환호성처럼 만듦
     const noiseFilter = ctx.createBiquadFilter();
     noiseFilter.type = 'lowpass';
     noiseFilter.frequency.value = 1000;
     
     const noiseGain = ctx.createGain();
     noiseGain.gain.setValueAtTime(0, now);
-    noiseGain.gain.linearRampToValueAtTime(0.4, now + 0.3); // Swell up
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.5); // Fade out
+    noiseGain.gain.linearRampToValueAtTime(0.8, now + 0.3); // 환호성 볼륨을 80%로 아주 크게 설정
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.5); // 서서히 줄어듦
     
     noiseSource.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
@@ -251,9 +302,9 @@ export default function App() {
     noiseSource.stop(now + 1.5);
   };
 
-  // 📱 Device Orientation Request
+  // 📱 스마트폰 기울기 센서 권한 요청 및 로비 진입
   const requestAccessAndEnterLobby = async () => {
-    initAudio();
+    initAudio(); // 사용자가 버튼을 눌렀을 때 오디오 시스템 활성화 (브라우저 정책)
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       try {
         const permission = await (DeviceOrientationEvent as any).requestPermission();
@@ -268,11 +319,13 @@ export default function App() {
       setPermissionGranted(true);
       window.addEventListener('deviceorientation', handleOrientation);
     }
+    // PC 사용자를 위한 키보드 방향키 이벤트 추가
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     setGameState('lobby');
   };
 
+  // 스마트폰 기울기 값을 게임 내 tilt 변수에 저장
   const handleOrientation = (e: DeviceOrientationEvent) => {
     if (!e.beta || !e.gamma) return;
     let beta = e.beta;
@@ -282,7 +335,7 @@ export default function App() {
     tilt.current = { x: gamma / 45, y: beta / 45 };
   };
 
-  // 💻 PC Fallback Controls
+  // 💻 PC 키보드 조작 로직 (방향키)
   const keys = useRef<{ [key: string]: boolean }>({});
   const handleKeyDown = (e: KeyboardEvent) => { keys.current[e.key] = true; updateTiltFromKeys(); };
   const handleKeyUp = (e: KeyboardEvent) => { keys.current[e.key] = false; updateTiltFromKeys(); };
@@ -295,7 +348,7 @@ export default function App() {
     tilt.current = { x: tx, y: ty };
   };
 
-  // 🚀 Initialize Stage
+  // 🚀 스테이지 시작 함수 (공과 구멍의 위치 초기화)
   const startStage = (stageId: number) => {
     const config = STAGES[stageId - 1];
     setCurrentStage(stageId);
@@ -338,6 +391,7 @@ export default function App() {
     setGameState('playing');
   };
 
+  // 일시정지 토글 함수
   const togglePause = () => {
     if (gameState === 'playing') {
       accumulatedTimeRef.current += (Date.now() - sessionStartTimeRef.current);
@@ -348,7 +402,7 @@ export default function App() {
     }
   };
 
-  // ⚙️ Physics Engine & Render Loop (60fps)
+  // ⚙️ 물리엔진 및 화면 그리기 (초당 60프레임 실행)
   useEffect(() => {
     if (gameState !== 'playing') {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -365,6 +419,7 @@ export default function App() {
 
     const config = STAGES[currentStage - 1];
 
+    // 물리 법칙 계산 함수
     const updatePhysics = () => {
       const p = player.current;
       const t = target.current;
@@ -377,15 +432,19 @@ export default function App() {
       const tableW = isLevel1 ? w * 0.6 : w;
       const tableH = isLevel1 ? h * 0.6 : h;
 
+      // 기울기에 따라 속도 증가
       p.vx += tilt.current.x * 0.6;
       p.vy += tilt.current.y * 0.6;
 
+      // 마찰력 적용 (서서히 멈춤)
       p.vx *= config.friction; p.vy *= config.friction;
       t.vx *= config.friction; t.vy *= config.friction;
 
+      // 위치 이동
       p.x += p.vx; p.y += p.vy;
       t.x += t.vx; t.y += t.vy;
 
+      // 벽과 충돌 처리
       const handleWallCollision = (ball: any) => {
         if (ball.x - ball.radius < marginX) { ball.x = marginX + ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), config.type); }
         if (ball.x + ball.radius > marginX + tableW) { ball.x = marginX + tableW - ball.radius; ball.vx *= -0.8; playCollisionSound(Math.abs(ball.vx), config.type); }
@@ -395,6 +454,7 @@ export default function App() {
       handleWallCollision(p);
       handleWallCollision(t);
 
+      // 공과 공 사이의 충돌 처리 (당구공 물리 법칙)
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -403,10 +463,12 @@ export default function App() {
         const nx = dx / dist;
         const ny = dy / dist;
         
+        // 겹침 방지 (공이 서로 파고들지 않게 밀어냄)
         const overlap = (p.radius + t.radius - dist) / 2;
         p.x -= nx * overlap; p.y -= ny * overlap;
         t.x += nx * overlap; t.y += ny * overlap;
 
+        // 탄성 충돌 계산
         const kx = p.vx - t.vx;
         const ky = p.vy - t.vy;
         const p_val = 2.0 * (nx * kx + ny * ky) / (p.mass + t.mass);
@@ -416,30 +478,31 @@ export default function App() {
         t.vx += p_val * p.mass * nx;
         t.vy += p_val * p.mass * ny;
 
-        playCollisionSound(Math.abs(p_val), config.type);
+        playCollisionSound(Math.abs(p_val), config.type); // 충돌 소리 재생
       }
 
+      // 구멍에 빠졌는지 확인
       const distToHoleP = Math.sqrt(Math.pow(p.x - hole.current.x, 2) + Math.pow(p.y - hole.current.y, 2));
       const distToHoleT = Math.sqrt(Math.pow(t.x - hole.current.x, 2) + Math.pow(t.y - hole.current.y, 2));
 
       const fallThreshold = hole.current.radius * 0.5;
 
       if (distToHoleP < fallThreshold) {
-        setGameState('gameover'); 
+        setGameState('gameover'); // 내 공이 빠지면 게임 오버
       } else if (distToHoleT < fallThreshold) {
         const finalTime = (accumulatedTimeRef.current + (Date.now() - sessionStartTimeRef.current)) / 1000;
-        saveRecord(currentStage, finalTime);
-        playVictorySound(); // 🎺 Play Celebratory Sound!
+        saveRecord(currentStage, finalTime); // 기록 저장
+        playVictorySound(); // 🎉 스테이지 클리어 축하 소리 재생!
         setGameState('clear'); 
       }
     };
 
-    // 🎨 Advanced Canvas Drawing for Distinct Ball Identities
+    // 🎨 공을 예쁘게 그리는 함수 (공 종류별로 무늬가 다름)
     const drawCustomBall = (x: number, y: number, radius: number, type: BallType, theme: Theme, isStriker: boolean) => {
       ctx.save();
       ctx.translate(x, y);
 
-      // 1. Dynamic Neon Glow
+      // 1. 네온 빛 번짐 효과 (Glow)
       ctx.shadowColor = isStriker ? '#ffffff' : theme.comp;
       ctx.shadowBlur = 20;
       ctx.fillStyle = isStriker ? '#ffffff' : theme.comp;
@@ -448,13 +511,13 @@ export default function App() {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // 2. Draw Specific Ball Patterns
+      // 2. 공 무늬 그리기
       ctx.save();
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.clip(); // Clip everything inside the ball
+      ctx.clip(); // 공 바깥으로 삐져나가지 않게 자르기
 
-      // Base Colors
+      // 기본 색상 설정
       let baseColor = '#ffffff';
       if (type === 'basketball') baseColor = '#ea580c';
       else if (type === 'softball') baseColor = '#d9f99d';
@@ -466,9 +529,9 @@ export default function App() {
       ctx.fillStyle = baseColor;
       ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
 
-      // Patterns
       ctx.lineWidth = radius * 0.1;
       
+      // 농구공 무늬
       if (type === 'basketball') {
         ctx.strokeStyle = '#290c0c';
         ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(0, radius); ctx.stroke();
@@ -476,10 +539,10 @@ export default function App() {
         ctx.beginPath(); ctx.arc(-radius*0.7, 0, radius*0.7, -Math.PI/2, Math.PI/2); ctx.stroke();
         ctx.beginPath(); ctx.arc(radius*0.7, 0, radius*0.7, Math.PI/2, Math.PI*1.5); ctx.stroke();
       } 
+      // 축구공 무늬
       else if (type === 'soccer') {
         ctx.fillStyle = '#171717';
         ctx.strokeStyle = '#171717';
-        // Center pentagon
         ctx.beginPath();
         for (let i = 0; i < 5; i++) {
           const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
@@ -490,7 +553,6 @@ export default function App() {
         }
         ctx.closePath();
         ctx.fill();
-        // Radiating lines
         for (let i = 0; i < 5; i++) {
           const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
           const px1 = Math.cos(angle) * radius * 0.35;
@@ -500,29 +562,32 @@ export default function App() {
           ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke();
         }
       } 
+      // 야구공/소프트볼 무늬 (빨간 실밥)
       else if (type === 'baseball' || type === 'softball') {
-        ctx.strokeStyle = '#ef4444'; // Red stitches
+        ctx.strokeStyle = '#ef4444'; 
         ctx.beginPath(); ctx.arc(-radius*0.6, 0, radius*0.7, -Math.PI/2.5, Math.PI/2.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(radius*0.6, 0, radius*0.7, Math.PI - Math.PI/2.5, Math.PI + Math.PI/2.5); ctx.stroke();
-        // Stitch dashes
         ctx.setLineDash([radius*0.1, radius*0.15]);
         ctx.lineWidth = radius * 0.15;
         ctx.beginPath(); ctx.arc(-radius*0.6, 0, radius*0.7, -Math.PI/2.5, Math.PI/2.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(radius*0.6, 0, radius*0.7, Math.PI - Math.PI/2.5, Math.PI + Math.PI/2.5); ctx.stroke();
         ctx.setLineDash([]);
       } 
+      // 테니스공 무늬
       else if (type === 'tennis') {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = radius * 0.15;
         ctx.beginPath(); ctx.arc(-radius*0.6, 0, radius*0.7, -Math.PI/2.5, Math.PI/2.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(radius*0.6, 0, radius*0.7, Math.PI - Math.PI/2.5, Math.PI + Math.PI/2.5); ctx.stroke();
       } 
+      // 볼링공 무늬 (구멍 3개)
       else if (type === 'bowling') {
         ctx.fillStyle = '#000000';
         ctx.beginPath(); ctx.arc(-radius*0.2, -radius*0.3, radius*0.15, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(radius*0.2, -radius*0.3, radius*0.15, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(0, radius*0.1, radius*0.15, 0, Math.PI*2); ctx.fill();
       } 
+      // 당구공 무늬 (숫자 8)
       else if (type === 'billiard') {
         ctx.fillStyle = '#ffffff';
         ctx.beginPath(); ctx.arc(0, 0, radius*0.5, 0, Math.PI*2); ctx.fill();
@@ -532,6 +597,7 @@ export default function App() {
         ctx.textBaseline = 'middle';
         ctx.fillText('8', 0, radius*0.05);
       } 
+      // 골프공 무늬 (오돌토돌한 표면)
       else if (type === 'golf') {
         ctx.fillStyle = 'rgba(0,0,0,0.15)';
         for(let dx = -radius; dx < radius; dx += radius*0.35) {
@@ -542,22 +608,22 @@ export default function App() {
           }
         }
       } 
+      // 배구공 무늬
       else if (type === 'volleyball') {
-        ctx.strokeStyle = '#fde047'; // Yellow panel
+        ctx.strokeStyle = '#fde047'; 
         ctx.lineWidth = radius * 0.3;
         ctx.beginPath(); ctx.arc(0, -radius*0.5, radius*0.8, 0, Math.PI); ctx.stroke();
-        ctx.strokeStyle = '#3b82f6'; // Blue panel
+        ctx.strokeStyle = '#3b82f6'; 
         ctx.beginPath(); ctx.arc(0, radius*0.5, radius*0.8, Math.PI, Math.PI*2); ctx.stroke();
-        // Panel borders
         ctx.strokeStyle = '#171717';
         ctx.lineWidth = radius * 0.05;
         ctx.beginPath(); ctx.arc(0, -radius*0.5, radius*0.8, 0, Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.arc(0, radius*0.5, radius*0.8, Math.PI, Math.PI*2); ctx.stroke();
       }
 
-      ctx.restore(); // Remove clipping
+      ctx.restore(); 
 
-      // 3. 3D Sphere Radial Gradient Overlay (Glossy finish)
+      // 3. 3D 입체감을 위한 그라데이션 (빛 반사 효과)
       const grad = ctx.createRadialGradient(-radius*0.3, -radius*0.3, radius*0.1, 0, 0, radius);
       grad.addColorStop(0, 'rgba(255,255,255,0.7)');
       grad.addColorStop(0.4, 'rgba(255,255,255,0)');
@@ -568,7 +634,7 @@ export default function App() {
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // 4. Sharp border for visibility
+      // 4. 공 테두리 선명하게 그리기
       ctx.lineWidth = 2;
       ctx.strokeStyle = isStriker ? '#ffffff' : theme.comp;
       ctx.stroke();
@@ -576,6 +642,7 @@ export default function App() {
       ctx.restore();
     };
 
+    // 화면 그리기 함수
     const render = () => {
       const w = canvas.width;
       const h = canvas.height;
@@ -585,12 +652,15 @@ export default function App() {
       const tableW = isLevel1 ? w * 0.6 : w;
       const tableH = isLevel1 ? h * 0.6 : h;
 
+      // 전체 배경 (검은색)
       ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, w, h);
 
+      // 게임 테이블 배경
       ctx.fillStyle = config.theme.bg;
       ctx.fillRect(marginX, marginY, tableW, tableH);
 
+      // 게임 테이블 네온 테두리
       ctx.strokeStyle = config.theme.neon;
       ctx.lineWidth = 6;
       ctx.shadowColor = config.theme.neon;
@@ -598,6 +668,7 @@ export default function App() {
       ctx.strokeRect(marginX + 3, marginY + 3, tableW - 6, tableH - 6);
       ctx.shadowBlur = 0;
 
+      // 구멍 그리기
       ctx.fillStyle = '#000000';
       ctx.shadowColor = config.theme.neon;
       ctx.shadowBlur = 25;
@@ -609,14 +680,16 @@ export default function App() {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Draw Custom Balls
+      // 타겟 공과 내 공 그리기
       drawCustomBall(target.current.x, target.current.y, target.current.radius, config.type, config.theme, false);
       drawCustomBall(player.current.x, player.current.y, player.current.radius, config.type, config.theme, true);
 
+      // 타이머 업데이트
       const currentTotalTime = accumulatedTimeRef.current + (Date.now() - sessionStartTimeRef.current);
       setDisplayTime(currentTotalTime / 1000);
     };
 
+    // 무한 반복 루프 (1초에 60번 실행)
     const loop = () => {
       updatePhysics();
       render();
@@ -630,9 +703,10 @@ export default function App() {
     };
   }, [gameState, currentStage]);
 
-  // --- UI Rendering ---
+  // --- UI 화면 렌더링 ---
   const isLevel2Unlocked = records[10] !== undefined;
 
+  // 스테이지 선택 버튼들을 그려주는 함수
   const renderStageGrid = (start: number, end: number) => (
     <div className="grid grid-cols-5 gap-2 sm:gap-3">
       {STAGES.slice(start - 1, end).map(stage => {
@@ -640,7 +714,7 @@ export default function App() {
         const isUnlocked = stage.id === 1 || records[stage.id - 1] !== undefined;
         const isLocked = !isUnlocked;
         
-        // Mystery Reveal: Show actual emoji in lobby ONLY if cleared. Otherwise, show "❓".
+        // 클리어하기 전에는 물음표(❓)로 표시하여 호기심 유발
         const displayIcon = isCleared ? stage.emoji : '❓';
 
         return (
@@ -676,9 +750,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center font-sans">
+      {/* 게임 전체를 감싸는 스마트폰 모양의 프레임 */}
       <div className="relative w-full max-w-[400px] aspect-[9/16] max-h-screen bg-slate-950 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden sm:rounded-3xl sm:border-4 border-slate-800 flex flex-col">
         
-        {/* Start Screen */}
+        {/* 1. 시작 화면 (Start Screen) */}
         {gameState === 'start' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-slate-950">
             <style>{`
@@ -696,9 +771,11 @@ export default function App() {
             <h1 className="text-4xl font-black mb-4 tracking-tighter bg-gradient-to-r from-blue-400 to-emerald-400 text-transparent bg-clip-text">
               TiltBall 10
             </h1>
+            {/* 요청하신 한 줄짜리 깔끔한 영어 설명 + 네온 글로우 효과 */}
             <p className="mb-8 text-blue-100 text-center text-lg font-bold tracking-wide drop-shadow-[0_0_10px_rgba(59,130,246,0.8)]">
               Tilt to hit the target ball into the hole!
             </p>
+            {/* 시선을 사로잡는 펄스(Pulse) 애니메이션 버튼 */}
             <button 
               onClick={requestAccessAndEnterLobby}
               className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-lg flex items-center gap-2 transition-colors active:scale-95 animate-button-pulse"
@@ -709,13 +786,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Lobby Screen */}
+        {/* 2. 로비 화면 (Lobby Screen) */}
         {gameState === 'lobby' && (
           <div className="absolute inset-0 z-10 p-4 overflow-y-auto bg-slate-950 flex flex-col scrollbar-hide">
             <div className="flex justify-between w-full mb-6 items-center mt-2">
               <h1 className="text-2xl font-black tracking-tighter text-white">Select Stage</h1>
-              <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 bg-slate-800 rounded-full text-slate-300 hover:text-white">
-                {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+              {/* BGM 켜기/끄기 버튼 */}
+              <button onClick={toggleBgm} className="p-2 bg-slate-800 rounded-full text-slate-300 hover:text-white flex items-center justify-center w-10 h-10">
+                <span className="text-lg">{bgmEnabled ? '🎵' : '🔇'}</span>
               </button>
             </div>
 
@@ -737,20 +815,29 @@ export default function App() {
           </div>
         )}
 
-        {/* Game Playing Screen (Flexbox Layout Fix) */}
+        {/* 3. 게임 플레이 화면 (Top Bar와 캔버스가 겹치지 않도록 flex-col 사용) */}
         {(gameState === 'playing' || gameState === 'paused' || gameState === 'clear' || gameState === 'gameover') && (
           <div className="flex flex-col w-full h-full bg-slate-950 relative">
             
-            {/* Top UI Bar (Strictly separated from Canvas) */}
+            {/* 상단 바 (Top UI Bar) - shrink-0을 주어 찌그러지지 않게 고정 */}
             <div className="w-full p-3 flex justify-between items-center z-20 bg-slate-900 border-b border-slate-800 shrink-0">
-              <button 
-                onClick={() => setGameState('lobby')}
-                className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 text-white transition-colors"
-              >
-                <Home size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setGameState('lobby')}
+                  className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 text-white transition-colors"
+                >
+                  <Home size={18} />
+                </button>
+                {/* 게임 중에도 BGM을 끄고 켤 수 있는 버튼 */}
+                <button 
+                  onClick={toggleBgm}
+                  className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 text-white transition-colors flex items-center justify-center w-9 h-9"
+                >
+                  <span className="text-sm">{bgmEnabled ? '🎵' : '🔇'}</span>
+                </button>
+              </div>
               
-              {/* In-Game HUD: Stage N */}
+              {/* 현재 스테이지 표시 */}
               <div className="text-lg font-black text-white tracking-widest">
                 STAGE {currentStage}
               </div>
@@ -768,12 +855,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* Canvas Container (Padded to ensure borders are always visible) */}
+            {/* 실제 게임이 그려지는 캔버스 영역 (남은 공간을 모두 차지함) */}
             <div className="flex-1 w-full p-3 sm:p-4 flex items-center justify-center overflow-hidden relative">
               <canvas ref={canvasRef} className="w-full h-full object-contain block" />
             </div>
 
-            {/* Pause Modal */}
+            {/* 일시정지 모달창 */}
             {gameState === 'paused' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <h2 className="text-3xl font-black text-white mb-8 tracking-widest">PAUSED</h2>
@@ -791,7 +878,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Clear Modal */}
+            {/* 스테이지 클리어 모달창 */}
             {gameState === 'clear' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <div className="text-5xl mb-4 animate-bounce">🎉</div>
@@ -810,7 +897,7 @@ export default function App() {
               </div>
             )}
 
-            {/* GameOver Modal */}
+            {/* 게임 오버 모달창 */}
             {gameState === 'gameover' && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                 <div className="text-5xl mb-4">💀</div>
