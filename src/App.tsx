@@ -109,6 +109,7 @@ export default function App() {
   // Canvas & Physics Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
+  const stageInitializedRef = useRef(false);
   
   // 🎧 Audio System Refs
   const audioCtxRef = useRef<AudioContext | null>(null); // SFX
@@ -423,44 +424,11 @@ export default function App() {
 
   // 🚀 Start Stage
   const startStage = (stageId: number) => {
-    const config = STAGES[stageId - 1];
     setCurrentStage(stageId);
-    
-    const LOGICAL_W = 400;
-    const LOGICAL_H = 711;
-
-    const isLevel1 = config.level === 1;
-    const marginX = isLevel1 ? LOGICAL_W * 0.2 : 0;
-    const marginY = isLevel1 ? LOGICAL_H * 0.2 : 0;
-    const tableW = isLevel1 ? LOGICAL_W * 0.6 : LOGICAL_W;
-    const tableH = isLevel1 ? LOGICAL_H * 0.6 : LOGICAL_H;
-
-    player.current = { 
-      x: marginX + tableW * 0.5, 
-      y: marginY + tableH * 0.8,
-      vx: 0, vy: 0, 
-      radius: config.radius, 
-      mass: config.mass 
-    };
-    
-    target.current = { 
-      x: marginX + tableW * 0.5, 
-      y: marginY + tableH * 0.2,
-      vx: 0, vy: 0, 
-      radius: config.radius, 
-      mass: config.mass 
-    };
-
-    hole.current = {
-      x: marginX + tableW * 0.5 + (Math.random() * tableW * 0.4 - tableW * 0.2),
-      y: marginY + tableH * 0.5 + (Math.random() * tableH * 0.4 - tableH * 0.2),
-      radius: config.radius * config.holeMultiplier
-    };
-
+    stageInitializedRef.current = false;
     accumulatedTimeRef.current = 0;
     sessionStartTimeRef.current = Date.now();
     setDisplayTime(0);
-    
     setGameState('playing');
   };
 
@@ -496,22 +464,76 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    canvas.width = 400;
-    canvas.height = 711;
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    // FIXED 1: Dynamic Canvas Layout
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
 
     const config = STAGES[currentStage - 1];
+    const w = canvas.width;
+    const h = canvas.height;
+    const isLevel1 = config.level === 1;
+
+    // FIXED 2: Level 1 Table Size
+    const marginX = isLevel1 ? w * 0.10 : 0;
+    const marginY = isLevel1 ? h * 0.10 : 0;
+    const tableW = isLevel1 ? w * 0.80 : w;
+    const tableH = isLevel1 ? h * 0.80 : h;
+
+    if (!stageInitializedRef.current) {
+      player.current = { 
+        x: marginX + tableW * 0.5, 
+        y: marginY + tableH * 0.8,
+        vx: 0, vy: 0, 
+        radius: config.radius, 
+        mass: config.mass 
+      };
+      
+      hole.current = {
+        x: marginX + tableW * 0.5 + (Math.random() * tableW * 0.4 - tableW * 0.2),
+        y: marginY + tableH * 0.5 + (Math.random() * tableH * 0.4 - tableH * 0.2),
+        radius: config.radius * config.holeMultiplier
+      };
+
+      // FIXED 4: Minimum Distance Between Hole and Target Ball
+      let targetX = 0;
+      let targetY = 0;
+      let validPosition = false;
+      let retries = 0;
+      const minDistance = Math.sqrt(tableW * tableW + tableH * tableH) * 0.35;
+
+      while (!validPosition && retries < 10) {
+        targetX = marginX + tableW * 0.5 + (Math.random() * tableW * 0.6 - tableW * 0.3);
+        targetY = marginY + tableH * 0.2 + (Math.random() * tableH * 0.2 - tableH * 0.1);
+        
+        const dist = Math.sqrt(Math.pow(targetX - hole.current.x, 2) + Math.pow(targetY - hole.current.y, 2));
+        if (dist >= minDistance) {
+          validPosition = true;
+        }
+        retries++;
+      }
+
+      if (!validPosition) {
+        targetX = hole.current.x > marginX + tableW * 0.5 ? marginX + tableW * 0.2 : marginX + tableW * 0.8;
+        targetY = hole.current.y > marginY + tableH * 0.5 ? marginY + tableH * 0.2 : marginY + tableH * 0.8;
+      }
+
+      target.current = { 
+        x: targetX, 
+        y: targetY,
+        vx: 0, vy: 0, 
+        radius: config.radius, 
+        mass: config.mass 
+      };
+
+      stageInitializedRef.current = true;
+    }
 
     const updatePhysics = () => {
       const p = player.current;
       const t = target.current;
-      const w = canvas.width;
-      const h = canvas.height;
-
-      const isLevel1 = config.level === 1;
-      const marginX = isLevel1 ? w * 0.2 : 0;
-      const marginY = isLevel1 ? h * 0.2 : 0;
-      const tableW = isLevel1 ? w * 0.6 : w;
-      const tableH = isLevel1 ? h * 0.6 : h;
 
       p.vx += tilt.current.x * 0.6;
       p.vy += tilt.current.y * 0.6;
@@ -708,14 +730,7 @@ export default function App() {
     };
 
     const render = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      const isLevel1 = config.level === 1;
-      const marginX = isLevel1 ? w * 0.2 : 0;
-      const marginY = isLevel1 ? h * 0.2 : 0;
-      const tableW = isLevel1 ? w * 0.6 : w;
-      const tableH = isLevel1 ? h * 0.6 : h;
-
+      // FIXED 2: Level 1 Table Size
       ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, w, h);
 
@@ -804,7 +819,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center font-sans">
-      <div className="relative w-full max-w-[400px] aspect-[9/16] max-h-screen bg-slate-950 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden sm:rounded-3xl sm:border-4 border-slate-800 flex flex-col">
+      {/* FIXED 1: Dynamic Canvas Layout (100dvh and safe-area-inset) */}
+      <div 
+        className="relative w-full max-w-[400px] h-[100dvh] bg-slate-950 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden sm:rounded-3xl sm:border-4 border-slate-800 flex flex-col"
+        style={{
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: 'env(safe-area-inset-bottom)'
+        }}
+      >
         
         {/* 🐛 Audio Debugging Panel (Hidden in Production, kept for safety) */}
         <div className="hidden absolute top-0 left-0 right-0 z-50 p-2 pointer-events-none bg-black/80 text-[10px] text-red-500 font-mono flex-col gap-0.5">
@@ -878,15 +900,8 @@ export default function App() {
         {(gameState === 'playing' || gameState === 'paused' || gameState === 'clear' || gameState === 'gameover' || gameState === 'reward_gate' || gameState === 'ad_loading') && (
           <div className="flex flex-col w-full h-full bg-slate-950 relative">
             
-            {/* Level 2 Ad Slot (TOP) */}
-            {!isLevel1 && (
-              <div className="w-full h-[60px] bg-[#1a1a1a] border-b border-slate-800 flex items-center justify-center shrink-0">
-                <span className="text-[10px] text-gray-500 tracking-widest uppercase">Advertisement</span>
-              </div>
-            )}
-
-            {/* Top Bar */}
-            <div className="w-full p-3 flex justify-between items-center z-20 bg-slate-900 border-b border-slate-800 shrink-0">
+            {/* FIXED 1: Top Bar exactly 56px */}
+            <div className="w-full h-[56px] px-3 flex justify-between items-center z-20 bg-slate-900 border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setGameState('lobby')}
@@ -919,17 +934,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Game Canvas Container (Dynamic Height) */}
-            <div className={`w-full flex items-center justify-center overflow-hidden relative ${isLevel1 ? 'h-[60%]' : 'h-[90%]'}`}>
+            {/* FIXED 1: Canvas Container takes remaining space */}
+            <div className="w-full flex-1 flex items-center justify-center overflow-hidden relative bg-black">
               <canvas ref={canvasRef} className="w-full h-full object-contain block" />
             </div>
 
-            {/* Level 1 Ad Slot (BOTTOM) */}
-            {isLevel1 && (
-              <div className="w-full h-[60px] bg-[#1a1a1a] border-t border-slate-800 flex items-center justify-center shrink-0 mt-auto">
-                <span className="text-[10px] text-gray-500 tracking-widest uppercase">Advertisement</span>
-              </div>
-            )}
+            {/* FIXED 3: Advertisement Banner Position (BOTTOM for BOTH Level 1 and Level 2) */}
+            <div className="w-full h-[60px] bg-[#1a1a1a] flex items-center justify-center shrink-0 border-t border-slate-800 mt-auto">
+              <span className="text-[10px] text-gray-500 tracking-widest uppercase">Advertisement</span>
+            </div>
 
             {/* Pause Modal */}
             {gameState === 'paused' && (
